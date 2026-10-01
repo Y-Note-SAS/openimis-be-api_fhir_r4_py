@@ -53,7 +53,7 @@ class FHIRApiCommunicationRequestPermissions(FHIRApiPermissions):
 
 
 class FHIRApiPractitionerPermissions(FHIRApiPermissions):
-    permissions_get = CoreConfig.gql_query_claim_administrator_perms
+    permissions_get = ClaimConfig.gql_query_claims_perms
     permissions_post = CoreConfig.gql_mutation_create_claim_administrator_perms
     permissions_put = CoreConfig.gql_mutation_update_claim_administrator_perms
     permissions_patch = CoreConfig.gql_mutation_update_claim_administrator_perms
@@ -61,7 +61,7 @@ class FHIRApiPractitionerPermissions(FHIRApiPermissions):
 
 
 class FHIRApiPractitionerOfficerPermissions(FHIRApiPermissions):
-    permissions_get = CoreConfig.gql_query_enrolment_officers_perms
+    permissions_get = ClaimConfig.gql_query_claims_perms
     permissions_post = CoreConfig.gql_mutation_create_enrolment_officers_perms
     permissions_put = CoreConfig.gql_mutation_update_enrolment_officers_perms
     permissions_patch = CoreConfig.gql_mutation_update_enrolment_officers_perms
@@ -119,7 +119,8 @@ class FHIRApiInsureePermissions(FHIRApiPermissions):
 
 
 class FHIRApiMedicationPermissions(FHIRApiPermissions):
-    permissions_get = MedicalConfig.gql_query_medical_items_perms
+    # permissions_get = MedicalConfig.gql_query_medical_items_perms
+    permissions_get = ClaimConfig.gql_query_claims_perms
     permissions_post = MedicalConfig.gql_mutation_medical_items_add_perms
     permissions_put = MedicalConfig.gql_mutation_medical_items_update_perms
     permissions_patch = MedicalConfig.gql_mutation_medical_items_update_perms
@@ -135,7 +136,8 @@ class FHIRApiConditionPermissions(FHIRApiPermissions):
 
 
 class FHIRApiActivityDefinitionPermissions(FHIRApiPermissions):
-    permissions_get = MedicalConfig.gql_query_medical_services_perms
+    permissions_get = ClaimConfig.gql_query_claims_perms
+    # permissions_get = MedicalConfig.gql_query_medical_services_perms
     permissions_post = MedicalConfig.gql_mutation_medical_services_add_perms
     permissions_put = MedicalConfig.gql_mutation_medical_services_update_perms
     permissions_patch = MedicalConfig.gql_mutation_medical_services_update_perms

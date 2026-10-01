@@ -206,3 +206,12 @@ class FHIRApiSubscriptionPermissions(FHIRApiPermissions):
     permissions_put = R4SubscriptionConfig.get_fhir_sub_update_perms()
     permissions_patch = R4SubscriptionConfig.get_fhir_sub_update_perms()
     permissions_delete = R4SubscriptionConfig.get_fhir_sub_delete_perms()
+
+
+class FHIRApiPlanDefinitionPermissions(FHIRApiPermissions):
+    # CSU: the program catalogue is consumed by the interoperability layer,
+    # the read permission used by the other CSU FHIR endpoints is reused here.
+    permissions_get = ClaimConfig.gql_query_claims_perms
+    permissions_post = []
+    permissions_put = []
+    permissions_patch = []

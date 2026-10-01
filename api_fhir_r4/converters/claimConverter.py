@@ -24,6 +24,8 @@ from api_fhir_r4.models import ClaimV2 as FHIRClaim, ClaimInsuranceV2 as ClaimIn
 from fhir.resources.R4B.attachment import Attachment
 from fhir.resources.R4B.period import Period
 from fhir.resources.R4B.claim import ClaimDiagnosis, ClaimSupportingInfo, ClaimItem as FHIRClaimItem
+from fhir.resources.R4B.extension import Extension
+from fhir.resources.R4B.reference import Reference
 
 from api_fhir_r4.utils import TimeUtils, FhirUtils, DbManagerUtils
 
@@ -48,6 +50,7 @@ class ClaimConverter(BaseFHIRConverter, ReferenceConverterMixin):
         cls.build_fhir_total(fhir_claim, imis_claim)
         cls.build_fhir_items(fhir_claim, imis_claim, reference_type)
         cls.build_fhir_supporting_info(fhir_claim, imis_claim)
+        cls.build_fhir_csu_program(fhir_claim, imis_claim)
         cls.build_fhir_attachments(fhir_claim, imis_claim)
         return fhir_claim
 
@@ -67,8 +70,68 @@ class ClaimConverter(BaseFHIRConverter, ReferenceConverterMixin):
         cls.build_imis_claim_admin(imis_claim, fhir_claim, errors, audit_user_id=audit_user_id)
         cls.build_imis_visit_type(imis_claim, fhir_claim, errors)
         cls.build_imis_supporting_info(imis_claim, fhir_claim, errors)
+        cls.build_imis_csu_program(imis_claim, fhir_claim, errors)
         cls.build_imis_submit_items_and_services(imis_claim, fhir_claim, errors, audit_user_id)
         cls.check_errors(errors)
+        return imis_claim
+
+    CSU_PROGRAM_EXTENSION_CODE = "claim-program"
+
+    @classmethod
+    def build_fhir_csu_program(cls, fhir_claim, imis_claim):
+        """
+        CSU specific mapping.
+
+        Exposes the claim program as an extension referencing the FHIR
+        PlanDefinition resource exposed by the CSU program module.
+        """
+        program = getattr(imis_claim, "program", None)
+        if program is None:
+            return fhir_claim
+
+        extension = Extension.construct()
+        extension.url = (
+            f"{GeneralConfiguration.get_system_base_url()}/StructureDefinition/"
+            f"{cls.CSU_PROGRAM_EXTENSION_CODE}"
+        )
+        reference = Reference.construct()
+        reference.reference = f"PlanDefinition/{program.idProgram}"
+        reference.display = program.nameProgram
+        extension.valueReference = reference
+        if type(fhir_claim.extension) is not list:
+            fhir_claim.extension = [extension]
+        else:
+            fhir_claim.extension.append(extension)
+        return fhir_claim
+
+    @classmethod
+    def build_imis_csu_program(cls, imis_claim, fhir_claim, errors):
+        """CSU specific mapping: resolve the claim program and store it on the claim."""
+        extension = cls.get_fhir_extension_by_url(
+            fhir_claim.extension,
+            f"{GeneralConfiguration.get_system_base_url()}/StructureDefinition/"
+            f"{cls.CSU_PROGRAM_EXTENSION_CODE}",
+        )
+        if extension is None:
+            return imis_claim
+
+        reference = getattr(extension, "valueReference", None)
+        if reference is None or not reference.reference:
+            return imis_claim
+
+        try:
+            from program.models import Program
+        except ImportError:
+            errors.append(_('The program module is not installed on this instance'))
+            return imis_claim
+
+        program_id = cls.get_id_from_reference(reference)
+        program = Program.objects.filter(idProgram=program_id).first()
+        if program is None:
+            errors.append(_('Invalid `program` reference %(ref)s') % {'ref': reference.reference})
+            return imis_claim
+
+        imis_claim.program = program
         return imis_claim
 
     @classmethod

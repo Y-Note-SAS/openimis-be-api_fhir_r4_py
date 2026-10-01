@@ -93,6 +93,10 @@ if 'claim' in imis_modules:
     router.register(r'CodeSystem/diagnosis', fhir_viewsets.CodeSystemOpenIMISDiagnosisViewSet,
                     basename="CodeSystem/diagnosis_R4")
 
+# register endpoint related to the CSU program module if used
+if 'program' in imis_modules:
+    router.register(r'PlanDefinition', fhir_viewsets.PlanDefinitionViewSet, basename="PlanDefinition_R4")
+
 # register endpoint for policy if used
 if 'policy' in imis_modules:
     router.register(r'Coverage', fhir_viewsets.CoverageRequestQuerySet, basename="Coverage_R4")

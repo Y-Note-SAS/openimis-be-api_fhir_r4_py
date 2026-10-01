@@ -25,6 +25,7 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
         cls.build_coverage_beneficiary(fhir_coverage, imis_policy)
         cls.build_coverage_payor(fhir_coverage, imis_policy)
         cls.build_coverage_extension(fhir_coverage, imis_policy)
+        cls.build_csu_program_and_cheque(fhir_coverage, imis_policy)
         return fhir_coverage
  
     @classmethod
@@ -165,6 +166,90 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
         ext_date.url = f'{GeneralConfiguration.get_system_base_url()}/StructureDefinition/coverage-date'
         ext_date.valueDate = TimeUtils.str_to_date(value.isoformat())
         return ext_date
+
+
+    CHEQUE_SANTE_EXTENSION_BASE = "cheque-sante"
+
+    @classmethod
+    def build_csu_program_and_cheque(cls, fhir_coverage, imis_policy):
+        """
+        CSU specific enrichment.
+
+        When the policy product is attached to a program, the program is exposed
+        as an extra Coverage class. For a "Chèque Santé" program the voucher
+        number (Policy.policy_number) and its status, tracked in the Cheque Santé
+        registry, are exposed as well.
+        """
+        program = getattr(imis_policy.product, "program", None)
+        if program is None:
+            return fhir_coverage
+
+        cls.__build_csu_program_class(fhir_coverage, program)
+        cls.__build_csu_cheque(fhir_coverage, imis_policy, program)
+        return fhir_coverage
+
+    @classmethod
+    def __build_csu_program_class(cls, fhir_coverage, program):
+        coverage_class = CoverageClass.construct()
+        coverage_class.type = cls.build_codeable_concept(
+            "program",
+            system=f"{GeneralConfiguration.get_system_base_url()}/CodeSystem/coverage-class-csu",
+            display="Programme",
+        )
+        coverage_class.value = program.code or str(program.idProgram)
+        coverage_class.name = program.nameProgram
+        if type(fhir_coverage.class_fhir) is not list:
+            fhir_coverage.class_fhir = [coverage_class]
+        else:
+            fhir_coverage.class_fhir.append(coverage_class)
+
+    @classmethod
+    def __build_csu_cheque(cls, fhir_coverage, imis_policy, program):
+        cheque_number = getattr(imis_policy, "policy_number", None)
+        if not cheque_number or not cls.__is_cheque_sante_program(program):
+            return fhir_coverage
+
+        identifier = cls.build_fhir_identifier(
+            cheque_number,
+            f"{GeneralConfiguration.get_system_base_url()}/CodeSystem/cheque-sante",
+            cls.CHEQUE_SANTE_EXTENSION_BASE,
+        )
+        if type(fhir_coverage.identifier) is not list:
+            fhir_coverage.identifier = [identifier]
+        else:
+            fhir_coverage.identifier.append(identifier)
+
+        cheque_status = cls.__get_csu_cheque_status(cheque_number)
+        if not cheque_status:
+            return fhir_coverage
+
+        extension = Extension.construct()
+        extension.url = (
+            f"{GeneralConfiguration.get_system_base_url()}/StructureDefinition/cheque-status"
+        )
+        extension.valueCode = cheque_status
+        if type(fhir_coverage.extension) is not list:
+            fhir_coverage.extension = [extension]
+        else:
+            fhir_coverage.extension.append(extension)
+        return fhir_coverage
+
+    @staticmethod
+    def __is_cheque_sante_program(program):
+        normalized = (program.nameProgram or "").lower()
+        for accented, plain in (("è", "e"), ("é", "e"), ("ê", "e")):
+            normalized = normalized.replace(accented, plain)
+        return "cheque" in normalized and "sant" in normalized
+
+    @staticmethod
+    def __get_csu_cheque_status(cheque_number):
+        # Imported lazily: the Cheque Santé registry is only installed on CSU instances.
+        try:
+            from cs.models import ChequeImportLine
+        except ImportError:
+            return None
+        cheque = ChequeImportLine.objects.filter(chequeImportLineCode=cheque_number).first()
+        return cheque.chequeImportLineStatus if cheque else None
 
     @classmethod
     def __build_product_plan_display(cls, class_, product):

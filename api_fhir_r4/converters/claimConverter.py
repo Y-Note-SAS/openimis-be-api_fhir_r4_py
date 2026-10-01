@@ -4,7 +4,6 @@ import re
 from urllib.parse import urljoin
 
 from typing import Type
-
 from claim.services import ClaimElementSubmit
 from claim.apps import ClaimConfig
 from claim.models import Claim, ClaimItem, ClaimService, ClaimAttachment

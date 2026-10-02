@@ -21,8 +21,3 @@ class PlanDefinitionViewSet(BaseFHIRView, viewsets.ReadOnlyModelViewSet):
         # Imported lazily: the program module is only installed on CSU instances.
         from program.models import Program
         return Program.objects.all().order_by('idProgram')
-
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        serializer = PlanDefinitionSerializer(self.paginate_queryset(queryset), many=True)
-        return self.get_paginated_response(serializer.data)

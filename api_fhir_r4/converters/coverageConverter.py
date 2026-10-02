@@ -169,6 +169,7 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
 
 
     CHEQUE_SANTE_EXTENSION_BASE = "cheque-sante"
+    CSU_UNSET = object()
 
     @classmethod
     def build_csu_program_and_cheque(cls, fhir_coverage, imis_policy):
@@ -221,7 +222,7 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
         else:
             fhir_coverage.identifier.append(identifier)
 
-        cheque_status = cls.__get_csu_cheque_status(cheque_number)
+        cheque_status = cls.__get_csu_cheque_status(imis_policy, cheque_number)
         if not cheque_status:
             return fhir_coverage
 
@@ -243,8 +244,13 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
             normalized = normalized.replace(accented, plain)
         return "cheque" in normalized and "sant" in normalized
 
-    @staticmethod
-    def __get_csu_cheque_status(cheque_number):
+    @classmethod
+    def __get_csu_cheque_status(cls, imis_policy, cheque_number):
+        # The list endpoint preloads the statuses on the policies to avoid one query
+        # per serialized coverage (N+1).
+        prefetched = getattr(imis_policy, "csu_cheque_status", cls.CSU_UNSET)
+        if prefetched is not cls.CSU_UNSET:
+            return prefetched
         # Imported lazily: the Cheque Santé registry is only installed on CSU instances.
         try:
             from cs.models import ChequeImportLine

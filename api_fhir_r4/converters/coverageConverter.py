@@ -191,13 +191,15 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
     @classmethod
     def __build_csu_program_class(cls, fhir_coverage, program):
         coverage_class = CoverageClass.construct()
+        # `value` is mandatory and pydantic validates the whole CoverageClass on every
+        # assignment, so the mandatory attribute has to be set before `type`.
+        coverage_class.value = program.code or str(program.idProgram)
+        coverage_class.name = program.nameProgram
         coverage_class.type = cls.build_codeable_concept(
             "program",
             system=f"{GeneralConfiguration.get_system_base_url()}/CodeSystem/coverage-class-csu",
             display="Programme",
         )
-        coverage_class.value = program.code or str(program.idProgram)
-        coverage_class.name = program.nameProgram
         if type(fhir_coverage.class_fhir) is not list:
             fhir_coverage.class_fhir = [coverage_class]
         else:

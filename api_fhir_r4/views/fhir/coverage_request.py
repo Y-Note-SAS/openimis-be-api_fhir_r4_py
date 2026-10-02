@@ -41,8 +41,36 @@ class CoverageRequestQuerySet(BaseFHIRView, mixins.RetrieveModelMixin, mixins.Li
                     isValidDate = False
                 queryset = queryset.filter(validity_from__lt=datevar)
 
-        serializer = CoverageSerializer(self.paginate_queryset(queryset), many=True)
+        page = self.paginate_queryset(queryset)
+        self.prefetch_csu_cheque_status(page)
+        serializer = CoverageSerializer(page, many=True)
         return self.get_paginated_response(serializer.data)
+
+    @staticmethod
+    def prefetch_csu_cheque_status(policies):
+        """
+        CSU specific.
+
+        Preloads the Cheque Santé registry statuses for the serialized policies so the
+        Coverage converter does not issue one query per coverage.
+        """
+        cheque_numbers = [
+            policy.policy_number
+            for policy in policies or []
+            if getattr(policy, "policy_number", None)
+        ]
+        if not cheque_numbers:
+            return
+        try:
+            from cs.models import ChequeImportLine
+        except ImportError:
+            return
+        statuses = dict(
+            ChequeImportLine.objects.filter(chequeImportLineCode__in=cheque_numbers)
+            .values_list("chequeImportLineCode", "chequeImportLineStatus")
+        )
+        for policy in policies:
+            policy.csu_cheque_status = statuses.get(policy.policy_number)
 
     def get_queryset(self):
         queryset = Policy.get_queryset(None, self.request.user)

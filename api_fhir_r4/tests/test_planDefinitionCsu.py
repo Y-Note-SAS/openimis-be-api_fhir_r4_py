@@ -54,6 +54,13 @@ class PlanDefinitionViewSetCsuTests(TestCase):
         match = resolve('/api/api_fhir_r4/PlanDefinition/')
         self.assertIsNotNone(match)
 
+    def test_plan_definition_endpoint_is_read_only(self):
+        from rest_framework import viewsets
+
+        self.assertTrue(issubclass(PlanDefinitionViewSet, viewsets.ReadOnlyModelViewSet))
+        for action in ('create', 'update', 'partial_update', 'destroy'):
+            self.assertFalse(hasattr(PlanDefinitionViewSet, action))
+
     def test_queryset_is_ordered_by_program_id(self):
         queryset = PlanDefinitionViewSet().get_queryset()
         self.assertEqual(['idProgram'], queryset.query.order_by)

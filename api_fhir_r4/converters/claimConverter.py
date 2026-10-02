@@ -106,8 +106,10 @@ class ClaimConverter(BaseFHIRConverter, ReferenceConverterMixin):
     @classmethod
     def build_imis_csu_program(cls, imis_claim, fhir_claim, errors):
         """CSU specific mapping: resolve the claim program and store it on the claim."""
+        # `extension` is None when the incoming claim carries no extension at all.
+        extensions = fhir_claim.extension or []
         extension = cls.get_fhir_extension_by_url(
-            fhir_claim.extension,
+            extensions,
             f"{GeneralConfiguration.get_system_base_url()}/StructureDefinition/"
             f"{cls.CSU_PROGRAM_EXTENSION_CODE}",
         )

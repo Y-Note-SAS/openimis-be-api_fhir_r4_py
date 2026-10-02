@@ -210,7 +210,10 @@ class FHIRApiSubscriptionPermissions(FHIRApiPermissions):
 
 class FHIRApiPlanDefinitionPermissions(FHIRApiPermissions):
     # CSU: the program catalogue is consumed by the interoperability layer, the read
-    # permission used by the other CSU FHIR endpoints is reused here. The endpoint is
-    # exposed through a read-only viewset, so no write permission is declared: an empty
-    # permission list would mean "no permission required" rather than "forbidden".
+    # permission used by the other CSU FHIR endpoints is reused here.
+    #
+    # The endpoint is exposed through a read-only viewset, so no write permission is
+    # declared on purpose: in FHIRApiPermissions an empty permission list means
+    # "no permission required" (not "forbidden"). Any future write action added to
+    # this resource MUST declare its own permissions explicitly.
     permissions_get = ClaimConfig.gql_query_claims_perms

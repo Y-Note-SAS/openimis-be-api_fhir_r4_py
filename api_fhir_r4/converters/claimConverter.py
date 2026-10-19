@@ -11,6 +11,7 @@ from claim.models import Claim, ClaimItem, ClaimService, ClaimAttachment
 
 from api_fhir_r4.containedResources.converterUtils import get_from_contained_or_by_reference
 from api_fhir_r4.mapping.claimMapping import ClaimPriorityMapping, ClaimVisitTypeMapping
+from api_fhir_r4.mapping.programMapping import ProgramMapping
 from medical.models import Diagnosis
 from django.utils.translation import gettext as _
 
@@ -22,7 +23,9 @@ from api_fhir_r4.converters.healthFacilityOrganisationConverter import HealthFac
 from api_fhir_r4.converters.claimAdminPractitionerConverter import ClaimAdminPractitionerConverter
 from api_fhir_r4.models import ClaimV2 as FHIRClaim, ClaimInsuranceV2 as ClaimInsurance
 from fhir.resources.R4B.attachment import Attachment
+from fhir.resources.R4B.extension import Extension
 from fhir.resources.R4B.period import Period
+from fhir.resources.R4B.reference import Reference
 from fhir.resources.R4B.claim import ClaimDiagnosis, ClaimSupportingInfo, ClaimItem as FHIRClaimItem
 
 from api_fhir_r4.utils import TimeUtils, FhirUtils, DbManagerUtils
@@ -48,6 +51,7 @@ class ClaimConverter(BaseFHIRConverter, ReferenceConverterMixin):
         cls.build_fhir_total(fhir_claim, imis_claim)
         cls.build_fhir_items(fhir_claim, imis_claim, reference_type)
         cls.build_fhir_supporting_info(fhir_claim, imis_claim)
+        cls.build_fhir_csu_program(fhir_claim, imis_claim)
         cls.build_fhir_attachments(fhir_claim, imis_claim)
         return fhir_claim
 
@@ -67,8 +71,68 @@ class ClaimConverter(BaseFHIRConverter, ReferenceConverterMixin):
         cls.build_imis_claim_admin(imis_claim, fhir_claim, errors, audit_user_id=audit_user_id)
         cls.build_imis_visit_type(imis_claim, fhir_claim, errors)
         cls.build_imis_supporting_info(imis_claim, fhir_claim, errors)
+        cls.build_imis_csu_program(imis_claim, fhir_claim, errors)
         cls.build_imis_submit_items_and_services(imis_claim, fhir_claim, errors, audit_user_id)
         cls.check_errors(errors)
+        return imis_claim
+
+    @classmethod
+    def build_fhir_csu_program(cls, fhir_claim, imis_claim):
+        """
+        CSU specific mapping: the claim program (a funder) is exposed as an extension referencing the
+        Organization resource of type `pay`.
+        """
+        program = getattr(imis_claim, 'program', None)
+        if program is None:
+            return fhir_claim
+
+        reference = Reference.construct()
+        reference.reference = f'Organization/{ProgramMapping.to_fhir_id(program)}'
+        reference.display = program.nameProgram
+        extension = Extension.construct()
+        extension.url = ProgramMapping.claim_program_extension_url()
+        extension.valueReference = reference
+        if type(fhir_claim.extension) is not list:
+            fhir_claim.extension = [extension]
+        else:
+            fhir_claim.extension.append(extension)
+        return fhir_claim
+
+    @classmethod
+    def build_imis_csu_program(cls, imis_claim, fhir_claim, errors):
+        """
+        CSU specific mapping: resolves the program extension and sets it on the claim. The extension is optional.
+        """
+        # `extension` is None when the incoming claim carries no extension at all.
+        extension = cls.get_fhir_extension_by_url(
+            fhir_claim.extension or [], ProgramMapping.claim_program_extension_url()
+        )
+        if extension is None:
+            return imis_claim
+
+        reference = getattr(extension, 'valueReference', None)
+        if reference is None or not reference.reference:
+            errors.append(_('The claim program extension requires a `valueReference`'))
+            return imis_claim
+
+        program_id = ProgramMapping.from_fhir_id(cls.get_id_from_reference(reference))
+        if program_id is None:
+            errors.append(_('Invalid `program` reference %(ref)s') % {'ref': reference.reference})
+            return imis_claim
+
+        # Imported lazily: the program module is only installed on CSU instances.
+        try:
+            from program.models import Program
+        except ImportError:
+            errors.append(_('The program module is not installed on this instance'))
+            return imis_claim
+
+        program = Program.objects.filter(idProgram=program_id).first()
+        if program is None:
+            errors.append(_('Unknown `program` reference %(ref)s') % {'ref': reference.reference})
+            return imis_claim
+
+        imis_claim.program = program
         return imis_claim
 
     @classmethod

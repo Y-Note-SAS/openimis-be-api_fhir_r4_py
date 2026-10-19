@@ -95,3 +95,21 @@ class CHFIdentifierModelRetriever(CodeIdentifierModelRetriever):
 class GroupIdentifierModelRetriever(CHFIdentifierModelRetriever):
     identifier_field = 'head_insuree_id__chf_id'
 
+
+class ProgramIdentifierModelRetriever(GenericModelRetriever):
+    """
+    CSU specific. Program has no uuid/id/unique code: it is looked up by its technical id,
+    carried by the prefixed FHIR id (see ProgramMapping).
+    """
+    identifier_field = 'idProgram'
+    serializer_reference_type = ReferenceConverterMixin.DB_ID_REFERENCE_TYPE
+
+    @classmethod
+    def identifier_validator(cls, identifier_value):
+        from api_fhir_r4.mapping.programMapping import ProgramMapping
+        return ProgramMapping.from_fhir_id(identifier_value) is not None
+
+    @classmethod
+    def get_model_object(cls, queryset: QuerySet, identifier_value) -> Model:
+        from api_fhir_r4.mapping.programMapping import ProgramMapping
+        return queryset.get(**{cls.identifier_field: ProgramMapping.from_fhir_id(identifier_value)})

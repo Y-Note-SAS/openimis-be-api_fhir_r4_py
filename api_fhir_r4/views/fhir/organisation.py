@@ -1,6 +1,8 @@
 import logging
 from collections import defaultdict, OrderedDict
 from datetime import datetime as py_datetime
+from django.apps import apps
+from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Q
 from django.http import Http404
 from itertools import chain
@@ -12,19 +14,22 @@ from api_fhir_r4.mixins import MultiIdentifierRetrieveManySerializersMixin, Mult
 from api_fhir_r4.model_retrievers import (
     CodeIdentifierModelRetriever,
     DatabaseIdentifierModelRetriever,
+    ProgramIdentifierModelRetriever,
     UUIDIdentifierModelRetriever
 )
 from api_fhir_r4.multiserializer import modelViewset
 from api_fhir_r4.permissions import (
     FHIRApiOrganizationPermissions,
     FHIRApiHealthServicePermissions,
-    FHIRApiInsuranceOrganizationPermissions
+    FHIRApiInsuranceOrganizationPermissions,
+    FHIRApiProgramOrganizationPermissions
 )
 from api_fhir_r4.views.fhir.base import BaseMultiserializerFHIRView
 from api_fhir_r4.serializers import (
     PolicyHolderOrganisationSerializer,
     HealthFacilityOrganisationSerializer,
-    InsuranceOrganizationSerializer
+    InsuranceOrganizationSerializer,
+    ProgramOrganisationSerializer
 )
 from api_fhir_r4.views.filters import (
     ValidityFromRequestParameterFilter,
@@ -46,7 +51,7 @@ class OrganisationViewSet(BaseMultiserializerFHIRView,
 
     @property
     def serializers(self):
-        return {
+        serializers = {
             HealthFacilityOrganisationSerializer:
                 (self._hf_queryset(), self._hf_serializer_validator, (FHIRApiHealthServicePermissions,)),
             PolicyHolderOrganisationSerializer:
@@ -54,6 +59,12 @@ class OrganisationViewSet(BaseMultiserializerFHIRView,
             InsuranceOrganizationSerializer:
                 (self._io_queryset(), self._io_serializer_validator, (FHIRApiInsuranceOrganizationPermissions,)),
         }
+        # CSU: programs (funders) are only available when the program module is installed.
+        if self._is_program_module_installed():
+            serializers[ProgramOrganisationSerializer] = \
+                (self._program_queryset(), self._program_serializer_validator,
+                 (FHIRApiProgramOrganizationPermissions,))
+        return serializers
 
     @classmethod
     def _hf_serializer_validator(cls, context):
@@ -80,6 +91,17 @@ class OrganisationViewSet(BaseMultiserializerFHIRView,
             get_check=lambda x: cls._get_type_from_query(x) in ('ins', None),
             post_check=lambda x: cls._get_type_from_body(x) == 'ins',
             put_check=lambda x: cls._get_type_from_body(x) in ('ins', None),
+        )
+
+    @classmethod
+    def _program_serializer_validator(cls, context):
+        # Programs are read-only: POST/PUT are only routed here for an explicit `pay` type (the serializer then
+        # answers 405) and, unlike the other types, never for an untyped PUT.
+        return cls._base_request_validator_dispatcher(
+            request=context['request'],
+            get_check=lambda x: cls._get_type_from_query(x) in ('pay', None),
+            post_check=lambda x: cls._get_type_from_body(x) == 'pay',
+            put_check=lambda x: cls._get_type_from_body(x) == 'pay',
         )
 
     @classmethod
@@ -200,6 +222,37 @@ class OrganisationViewSet(BaseMultiserializerFHIRView,
     def _ph_queryset(self):
         queryset = PolicyHolder.objects.filter(is_deleted=False).order_by('date_created')
         return DateUpdatedRequestParameterFilter(self.request).filter_queryset(queryset)
+
+    @staticmethod
+    def _is_program_module_installed():
+        return apps.is_installed('program')
+
+    @staticmethod
+    def _is_program_queryset(queryset):
+        return queryset.model._meta.label == 'program.Program'
+
+    def _program_queryset(self):
+        # Imported lazily: the program module is only installed on CSU instances.
+        from program.models import Program
+        return Program.objects.order_by('idProgram')
+
+    def _get_object_with_first_valid_retriever(self, queryset, identifier):
+        # Program ids ("program-<id>") are resolved by their own retriever only: the generic ones would either
+        # miss them or, for the code retriever, fail on the non-unique Program.code. Conversely, a program id is
+        # never looked up in the other organisation types.
+        is_program_id = ProgramIdentifierModelRetriever.identifier_validator(identifier)
+        if not self._is_program_queryset(queryset):
+            if is_program_id:
+                return None, None
+            return super()._get_object_with_first_valid_retriever(queryset, identifier)
+        if not is_program_id:
+            return None, None
+        try:
+            resource = ProgramIdentifierModelRetriever.get_model_object(queryset, identifier)
+        except ObjectDoesNotExist:
+            return None, None
+        self.check_object_permissions(self.request, resource)
+        return ProgramIdentifierModelRetriever.serializer_reference_type, resource
 
     def _io_queryset(self):
         now = py_datetime.now()  # can't use core config here...

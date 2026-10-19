@@ -2,9 +2,11 @@ from django.utils.translation import gettext as _
 from api_fhir_r4.configurations import GeneralConfiguration, R4CoverageConfig
 from api_fhir_r4.converters import BaseFHIRConverter, ReferenceConverterMixin
 from api_fhir_r4.mapping.coverageMapping import CoverageStatus
+from api_fhir_r4.mapping.programMapping import ProgramMapping
 from api_fhir_r4.models import CoverageV2 as Coverage, CoverageClassV2 as CoverageClass
 from fhir.resources.R4B.period import Period
 from fhir.resources.R4B.extension import Extension
+from fhir.resources.R4B.identifier import Identifier
 from fhir.resources.R4B.reference import Reference
 from policy.signals import signal_check_formal_sector_for_policy
 from product.models import ProductItem, ProductService
@@ -25,6 +27,7 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
         cls.build_coverage_beneficiary(fhir_coverage, imis_policy)
         cls.build_coverage_payor(fhir_coverage, imis_policy)
         cls.build_coverage_extension(fhir_coverage, imis_policy)
+        cls.build_csu_program(fhir_coverage, imis_policy)
         return fhir_coverage
  
     @classmethod
@@ -165,6 +168,76 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
         ext_date.url = f'{GeneralConfiguration.get_system_base_url()}/StructureDefinition/coverage-date'
         ext_date.valueDate = TimeUtils.str_to_date(value.isoformat())
         return ext_date
+
+    # Sentinel: the cheque status was not preloaded on the policy (None means "no registry entry").
+    CSU_UNSET = object()
+
+    @classmethod
+    def build_csu_program(cls, fhir_coverage, imis_policy):
+        """
+        CSU specific enrichment, driven by Product.program (absent on instances without the program module).
+
+        The program (funder) is appended to Coverage.payor, the existing payor is kept. For the "Chèque Santé"
+        program the voucher number (Policy.policy_number) is exposed as an identifier and its status in the
+        cheque registry as an extension, never in Coverage.status.
+        """
+        program = getattr(imis_policy.product, 'program', None)
+        if program is None:
+            return fhir_coverage
+
+        reference = Reference.construct()
+        reference.reference = f'Organization/{ProgramMapping.to_fhir_id(program)}'
+        reference.display = program.nameProgram
+        if type(fhir_coverage.payor) is not list:
+            fhir_coverage.payor = [reference]
+        else:
+            fhir_coverage.payor.append(reference)
+
+        if ProgramMapping.is_cheque_sante(program):
+            cls.__build_csu_cheque(fhir_coverage, imis_policy)
+        return fhir_coverage
+
+    @classmethod
+    def __build_csu_cheque(cls, fhir_coverage, imis_policy):
+        cheque_number = getattr(imis_policy, 'policy_number', None)
+        if not cheque_number:
+            return fhir_coverage
+
+        identifier = Identifier.construct()
+        identifier.system = ProgramMapping.cheque_sante_system()
+        identifier.value = cheque_number
+        if type(fhir_coverage.identifier) is not list:
+            fhir_coverage.identifier = [identifier]
+        else:
+            fhir_coverage.identifier.append(identifier)
+
+        cheque_status = cls.__get_csu_cheque_status(imis_policy, cheque_number)
+        if not cheque_status:
+            return fhir_coverage
+
+        extension = Extension.construct()
+        extension.url = ProgramMapping.cheque_status_extension_url()
+        extension.valueCode = cheque_status
+        if type(fhir_coverage.extension) is not list:
+            fhir_coverage.extension = [extension]
+        else:
+            fhir_coverage.extension.append(extension)
+        return fhir_coverage
+
+    @classmethod
+    def __get_csu_cheque_status(cls, imis_policy, cheque_number):
+        # The list endpoint preloads the statuses on the policies to avoid one query per coverage (N+1).
+        prefetched = getattr(imis_policy, 'csu_cheque_status', cls.CSU_UNSET)
+        if prefetched is not cls.CSU_UNSET:
+            return prefetched
+        # Imported lazily: the cheque registry is only installed on CSU instances.
+        try:
+            from cs.models import ChequeImportLine
+        except ImportError:
+            return None
+        cheque = ChequeImportLine.objects.filter(chequeImportLineCode=cheque_number) \
+            .order_by('-idChequeImportLine').first()
+        return cheque.chequeImportLineStatus if cheque else None
 
     @classmethod
     def __build_product_plan_display(cls, class_, product):

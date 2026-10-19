@@ -168,6 +168,8 @@ class ClaimSerializer(ContainedContentSerializerMixin, BaseFHIRSerializer):
             'category',
             'visit_type',
             'guarantee_id',
+            # CSU: set by the program extension of the FHIR claim, see ClaimConverter.build_imis_csu_program
+            'program_id',
 
             'insuree_id',
             'health_facility_id',

@@ -445,14 +445,14 @@ class ClaimConverter(BaseFHIRConverter, ReferenceConverterMixin):
     @classmethod
     def build_fhir_insurance(cls, fhir_claim, imis_claim, reference_type):
         policies = list(imis_claim.insuree.insuree_policies.all())
+        claim_insurance_data = {'focal': True, 'sequence': 1, 'coverage': {'display': 'Policy'}}
+        insurance = ClaimInsurance(**claim_insurance_data)
         if policies:
             sorted_by_enrol = sorted(list(policies), key=lambda x: x.enrollment_date, reverse=True)
             latest = sorted_by_enrol[0]
-            claim_insurance_data = {'focal': True, 'sequence': 1}
-            insurance = ClaimInsurance(**claim_insurance_data)
             insurance.coverage = cls.build_fhir_resource_reference(latest.policy, type="Coverage",
                                                                    reference_type=reference_type)
-            fhir_claim.insurance = [insurance]
+        fhir_claim.insurance = [insurance]
 
     @classmethod
     def build_fhir_attachments(cls, fhir_claim, imis_claim):

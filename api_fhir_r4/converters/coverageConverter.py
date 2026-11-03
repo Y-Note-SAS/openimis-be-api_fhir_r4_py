@@ -148,11 +148,12 @@ class CoverageConverter(BaseFHIRConverter, ReferenceConverterMixin):
 
     @classmethod
     def __build_effective_date(cls, fhir_coverage, imis_coverage):
-        enroll_date = cls.__build_date_extension(imis_coverage.effective_date)
-        if type(fhir_coverage.extension) is not list:
-            fhir_coverage.extension = [enroll_date]
-        else:
-            fhir_coverage.extension.append(enroll_date)
+        if imis_coverage.effective_date:
+            enroll_date = cls.__build_date_extension(imis_coverage.effective_date)
+            if type(fhir_coverage.extension) is not list:
+                fhir_coverage.extension = [enroll_date]
+            else:
+                fhir_coverage.extension.append(enroll_date)
 
     @classmethod
     def __build_enroll_date(cls, fhir_coverage, imis_coverage):

@@ -106,5 +106,6 @@ from api_fhir_r4.serializers.enrolmentOfficerPractitionerRoleSerializer import \
 from api_fhir_r4.serializers.communicationSerializer import CommunicationSerializer
 from api_fhir_r4.serializers.invoiceSerializer import InvoiceSerializer
 from api_fhir_r4.serializers.insuranceOrganisationSerializer import InsuranceOrganizationSerializer
+from api_fhir_r4.serializers.programOrganisationSerializer import ProgramOrganisationSerializer
 from api_fhir_r4.serializers.billSerializer import BillSerializer
 from api_fhir_r4.serializers.claimSerializer import ClaimSerializer

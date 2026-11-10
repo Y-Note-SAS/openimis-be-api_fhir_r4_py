@@ -1,3 +1,4 @@
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from api_fhir_r4.multiserializer import MultiSerializerSerializerClass
@@ -13,4 +14,8 @@ class BaseFHIRView(APIView):
 
 
 class BaseMultiserializerFHIRView(BaseFHIRView):
+    # The view only requires an authenticated user; the real check is per registered
+    # serializer (multiserializer mixins), which refuses when none of them passes.
+    # Inheriting FHIRApiPermissions here (v1.7.0) shadowed the mixin's IsAuthenticated.
+    permission_classes = (IsAuthenticated,)
     serializer_class = MultiSerializerSerializerClass

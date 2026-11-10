@@ -41,7 +41,7 @@ class ClaimViewSet(BaseFHIRView, MultiIdentifierRetrieverMixin, mixins.ListModel
                     raise ValidationError({'refDate': 'Invalid date format, should be in "%Y-%m-%d" format'})
 
             if patient is not None:
-                for_patient = Insuree.objects.get(uuid=patient)
+                for_patient = Insuree.get_queryset(None, self.request.user).get(uuid=patient)
                 queryset = queryset.filter(insuree=for_patient)
 
         serializer = ClaimSerializer(self.paginate_queryset(queryset), many=True, context={'contained': contained})

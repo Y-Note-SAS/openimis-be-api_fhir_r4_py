@@ -35,7 +35,12 @@ class SubscriptionViewSet(BaseFHIRView, ModelViewSet):
     permission_classes = (FHIRApiSubscriptionPermissions,)
 
     def get_queryset(self):
-        queryset = Subscription.objects.filter(is_deleted=False).order_by('date_created')
+        queryset = Subscription.get_queryset(None, self.request.user).filter(is_deleted=False).order_by('date_created')
+        user = self.request.user
+        if not getattr(user, "is_superuser", False):
+            # A subscription carries its owner's webhook endpoint: list the user's own
+            # only (v1.7.0 checked ownership on delete alone).
+            queryset = queryset.filter(user_created_id=user.id)
         return DateUpdatedRequestParameterFilter(self.request).filter_queryset(queryset)
 
     def perform_destroy(self, instance):

@@ -79,16 +79,14 @@ class PractitionerViewSet(BaseMultiserializerFHIRView,
         return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
-        return ClaimAdmin.objects
+        return ClaimAdmin.get_queryset(None, self.request.user)
 
     def _ca_queryset(self):
-        queryset = ClaimAdmin\
-            .objects\
-            .filter(validity_to__isnull=True).all()
+        queryset = ClaimAdmin.get_queryset(None, self.request.user).filter(validity_to__isnull=True).all()
         return ValidityFromRequestParameterFilter(self.request).filter_queryset(queryset)
 
     def _eo_queryset(self):
-        queryset = Officer.objects.filter(validity_to__isnull=True).order_by('validity_from').all()
+        queryset = Officer.get_queryset(None, self.request.user).filter(validity_to__isnull=True).order_by('validity_from').all()
         return ValidityFromRequestParameterFilter(self.request).filter_queryset(queryset)
 
     @classmethod

@@ -35,6 +35,14 @@ def closed(perms, fallback=None):
     return list(fallback) if fallback else DENY
 
 
+class AnyOf(tuple):
+    """Alternative right lists: the verb is allowed when the user holds ANY of them
+    (each list keeps Cameroon's AND semantics). Every list goes through `closed`."""
+
+    def __new__(cls, *lists):
+        return super().__new__(cls, tuple(closed(perms) for perms in lists))
+
+
 class FHIRApiPermissions(DjangoModelPermissions):
     # Closed defaults: a subclass that forgets a verb refuses it instead of opening
     # it to everybody.
@@ -56,6 +64,15 @@ class FHIRApiPermissions(DjangoModelPermissions):
         self.perms_map['PUT'] = self.permissions_put
         self.perms_map['PATCH'] = self.permissions_patch
         self.perms_map['DELETE'] = self.permissions_delete
+
+    def has_permission(self, request, view):
+        perms = self.perms_map.get(request.method)
+        if isinstance(perms, AnyOf):
+            user = request.user
+            if not user or not user.is_authenticated:
+                return False
+            return any(user.has_perms(list(alternative)) for alternative in perms)
+        return super().has_permission(request, view)
 
     def get_required_permissions(self, method, model_cls):
         if method not in self.perms_map:
@@ -83,7 +100,9 @@ class FHIRApiCommunicationRequestPermissions(FHIRApiPermissions):
 
 
 class FHIRApiPractitionerPermissions(FHIRApiPermissions):
-    permissions_get = closed(CoreConfig.gql_query_claim_administrator_perms)
+    # CSU (dev-csu a7a9547): claim apps also read it with the claim query right
+    permissions_get = AnyOf(CoreConfig.gql_query_claim_administrator_perms,
+                            ClaimConfig.gql_query_claims_perms)
     permissions_post = closed(CoreConfig.gql_mutation_create_claim_administrator_perms)
     permissions_put = closed(CoreConfig.gql_mutation_update_claim_administrator_perms)
     permissions_patch = closed(CoreConfig.gql_mutation_update_claim_administrator_perms)
@@ -91,7 +110,9 @@ class FHIRApiPractitionerPermissions(FHIRApiPermissions):
 
 
 class FHIRApiPractitionerOfficerPermissions(FHIRApiPermissions):
-    permissions_get = closed(CoreConfig.gql_query_enrolment_officers_perms)
+    # CSU (dev-csu a7a9547): claim apps also read it with the claim query right
+    permissions_get = AnyOf(CoreConfig.gql_query_enrolment_officers_perms,
+                            ClaimConfig.gql_query_claims_perms)
     permissions_post = closed(CoreConfig.gql_mutation_create_enrolment_officers_perms)
     permissions_put = closed(CoreConfig.gql_mutation_update_enrolment_officers_perms)
     permissions_patch = closed(CoreConfig.gql_mutation_update_enrolment_officers_perms)
@@ -154,8 +175,9 @@ class FHIRApiInsureePermissions(FHIRApiPermissions):
 
 
 class FHIRApiMedicationPermissions(FHIRApiPermissions):
-    # GET keeps requiring the item query right (reference opens it, OMT-281).
-    permissions_get = closed(MedicalConfig.gql_query_medical_items_perms)
+    # CSU (dev-csu a7a9547): claim apps also read it with the claim query right
+    permissions_get = AnyOf(MedicalConfig.gql_query_medical_items_perms,
+                            ClaimConfig.gql_query_claims_perms)
     permissions_post = closed(MedicalConfig.gql_mutation_medical_items_add_perms)
     permissions_put = closed(MedicalConfig.gql_mutation_medical_items_update_perms)
     permissions_patch = closed(MedicalConfig.gql_mutation_medical_items_update_perms)
@@ -170,8 +192,9 @@ class FHIRApiConditionPermissions(FHIRApiPermissions):
 
 
 class FHIRApiActivityDefinitionPermissions(FHIRApiPermissions):
-    # GET keeps requiring the service query right (reference opens it, OMT-281).
-    permissions_get = closed(MedicalConfig.gql_query_medical_services_perms)
+    # CSU (dev-csu a7a9547): claim apps also read it with the claim query right
+    permissions_get = AnyOf(MedicalConfig.gql_query_medical_services_perms,
+                            ClaimConfig.gql_query_claims_perms)
     permissions_post = closed(MedicalConfig.gql_mutation_medical_services_add_perms)
     permissions_put = closed(MedicalConfig.gql_mutation_medical_services_update_perms)
     permissions_patch = closed(MedicalConfig.gql_mutation_medical_services_update_perms)

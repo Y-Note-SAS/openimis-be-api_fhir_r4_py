@@ -43,6 +43,9 @@ def _MultiserializerPermissionClassWrapper(PermissionClass):
             if filter_values.get('id') == -1:
                 return False
         perms = self.get_required_permissions(request.method, queryset.model)
+        from api_fhir_r4.permissions import AnyOf
+        if isinstance(perms, AnyOf):
+            return any(request.user.has_perms(list(alternative)) for alternative in perms)
         return request.user.has_perms(perms)
 
     permission_class = type('PermissionClassWrapper', PermissionClass.__bases__, dict(PermissionClass.__dict__))

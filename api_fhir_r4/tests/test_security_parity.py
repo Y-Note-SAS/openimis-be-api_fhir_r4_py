@@ -170,6 +170,14 @@ class PractitionerRightTests(_HttpBase):
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content[:300])
 
 
+    def test_get_ca_allowed_with_claim_right(self):
+        """[CSU dev-csu a7a9547] claim apps read claim administrators with the claim query right"""
+        from claim.apps import ClaimConfig
+        user = create_right_only_user("spf_prac_claim", perm_ids(ClaimConfig.gql_query_claims_perms))
+        response = self._call("get", "Practitioner/", user, params={"resourceType": "ca"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content[:300])
+
+
 class OrganizationCodeSystemRightTests(_HttpBase):
     """[NEW] the organization-* code systems only require authentication (reference: same)."""
 

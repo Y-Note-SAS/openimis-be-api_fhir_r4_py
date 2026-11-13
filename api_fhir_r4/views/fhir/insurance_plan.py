@@ -29,5 +29,5 @@ class ProductViewSet(BaseFHIRView, MultiIdentifierRetrieverMixin, viewsets.ReadO
         return response
 
     def get_queryset(self):
-        queryset = Product.objects.all().order_by('validity_from')
+        queryset = Product.get_queryset(None, self.request.user).order_by('validity_from')
         return ValidityFromRequestParameterFilter(self.request).filter_queryset(queryset)

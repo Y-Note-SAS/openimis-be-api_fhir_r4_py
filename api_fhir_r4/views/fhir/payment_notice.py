@@ -36,5 +36,6 @@ class PaymentNoticeViewSet(BaseFHIRView, MultiIdentifierRetrieverMixin,
         return response
 
     def get_queryset(self):
-        queryset = PaymentInvoice.objects.filter(is_deleted=False).order_by('date_created')
+        from api_fhir_r4.row_scope import scoped_payment_invoices
+        queryset = scoped_payment_invoices(self.request.user).filter(is_deleted=False).order_by('date_created')
         return DateUpdatedRequestParameterFilter(self.request).filter_queryset(queryset)

@@ -213,14 +213,14 @@ class OrganisationViewSet(BaseMultiserializerFHIRView,
             return serializer.to_representation(obj=default_insurance_organisation)
 
     def get_queryset(self):
-        return HealthFacility.objects
+        return HealthFacility.get_queryset(None, self.request.user)
 
     def _hf_queryset(self):
-        queryset = HealthFacility.objects.filter(validity_to__isnull=True).order_by('validity_from')
+        queryset = HealthFacility.get_queryset(None, self.request.user).filter(validity_to__isnull=True).order_by('validity_from')
         return ValidityFromRequestParameterFilter(self.request).filter_queryset(queryset)
 
     def _ph_queryset(self):
-        queryset = PolicyHolder.objects.filter(is_deleted=False).order_by('date_created')
+        queryset = PolicyHolder.get_queryset(None, self.request.user).filter(is_deleted=False).order_by('date_created')
         return DateUpdatedRequestParameterFilter(self.request).filter_queryset(queryset)
 
     @staticmethod

@@ -77,14 +77,17 @@ class InvoiceViewSet(BaseMultiserializerFHIRView,
         return super().list(request, *args, **kwargs)
 
     def get_queryset(self):
-        return Invoice.objects
+        from api_fhir_r4.row_scope import scoped_invoices
+        return scoped_invoices(self.request.user)
 
     def _invoice_queryset(self):
-        queryset = Invoice.objects.filter(is_deleted=False).order_by('date_created')
+        from api_fhir_r4.row_scope import scoped_invoices
+        queryset = scoped_invoices(self.request.user).filter(is_deleted=False).order_by('date_created')
         return DateUpdatedRequestParameterFilter(self.request).filter_queryset(queryset)
 
     def _bill_queryset(self):
-        queryset = Bill.objects.filter(is_deleted=False).order_by('date_created')
+        from api_fhir_r4.row_scope import scoped_bills
+        queryset = scoped_bills(self.request.user).filter(is_deleted=False).order_by('date_created')
         return DateUpdatedRequestParameterFilter(self.request).filter_queryset(queryset)
 
     @classmethod

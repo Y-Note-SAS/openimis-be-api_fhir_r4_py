@@ -110,8 +110,22 @@ class OperationOutcomeConverter(BaseFHIRConverter):
     def build_for_key_api_exception(cls, obj):
         severity = "fatal"
         code = R4IssueTypeConfig.get_fhir_code_for_exception()
-        details_text = obj.detail
+        details_text = cls.api_exception_text(obj.detail)
         return cls.build_outcome(severity, code, details_text)
+
+    @classmethod
+    def api_exception_text(cls, detail):
+        """
+        The text of a DRF exception detail. A ValidationError carries a list or a dict of
+        messages (`{'refDate': ['Invalid date format']}`), while the FHIR text must be a
+        string: passed as is, building the outcome failed and every 400 became a 500.
+        """
+        if isinstance(detail, dict):
+            return "; ".join(f"{field}: {cls.api_exception_text(messages)}"
+                             for field, messages in detail.items())
+        if isinstance(detail, (list, tuple)):
+            return "; ".join(cls.api_exception_text(message) for message in detail)
+        return str(detail)
 
     @classmethod
     def build_for_fhir_claim_submit_error(cls, obj):

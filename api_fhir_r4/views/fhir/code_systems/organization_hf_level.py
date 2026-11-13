@@ -3,6 +3,8 @@ from api_fhir_r4.serializers import CodeSystemSerializer
 from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.core.exceptions import PermissionDenied
+from api_fhir_r4.permissions import FHIRApiHealthServicePermissions
 
 from rest_framework.views import APIView
 from api_fhir_r4.views import CsrfExemptSessionAuthentication
@@ -15,6 +17,8 @@ class CodeSystemOrganizationHFLevelViewSet(viewsets.ViewSet):
     authentication_classes = [CsrfExemptSessionAuthentication] + APIView.settings.DEFAULT_AUTHENTICATION_CLASSES
 
     def list(self, request):
+        if not request.user.has_perms(FHIRApiHealthServicePermissions.permissions_get):
+            raise PermissionDenied("unauthorized")
         # we don't use typical instance, we only indicate the model and the field to be mapped into CodeSystem
         serializer = CodeSystemSerializer(
             instance=None,

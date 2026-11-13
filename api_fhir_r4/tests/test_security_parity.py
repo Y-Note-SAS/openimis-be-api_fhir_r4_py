@@ -202,6 +202,26 @@ class OrganizationCodeSystemRightTests(_HttpBase):
 # 2. Permission-class mechanics (unit)
 # ---------------------------------------------------------------------------------------
 
+class OperationOutcomeFromApiExceptionTests(TestCase):
+    """[NEW] a DRF exception detail that is not a string (ValidationError) builds an outcome"""
+
+    def _text(self, exc):
+        from api_fhir_r4.converters import OperationOutcomeConverter
+        return OperationOutcomeConverter.to_fhir_obj(exc).dict()["issue"][0]["details"]["text"]
+
+    def test_dict_detail(self):
+        from rest_framework.exceptions import ValidationError
+        self.assertEqual("refDate: bad format", self._text(ValidationError({"refDate": "bad format"})))
+
+    def test_list_detail(self):
+        from rest_framework.exceptions import ValidationError
+        self.assertEqual("first; second", self._text(ValidationError(["first", "second"])))
+
+    def test_string_detail_unchanged(self):
+        from rest_framework.exceptions import PermissionDenied
+        self.assertEqual("nope", self._text(PermissionDenied("nope")))
+
+
 class PermsMapIsolationTests(TestCase):
 
     def test_perms_map_is_not_the_drf_class_attribute(self):
@@ -360,6 +380,51 @@ class FhirRowScopeTests(TestCase):
         ids = set(self._served(ClaimViewSet).values_list("id", flat=True))
         self.assertIn(claim1.id, ids, "sanity: own-district claim visible")
         self.assertNotIn(claim2.id, ids)
+
+    def _listed_claim_ids(self, patient):
+        """the claims the list hands to the paginator for ?patient= (the serializer is not
+        under test: rendering a claim needs fixtures far beyond the scope check)"""
+        from unittest import mock
+        from rest_framework.test import APIClient
+        from api_fhir_r4.views.fhir.claim import ClaimViewSet
+        listed = []
+
+        def paginate(view, queryset):
+            listed.extend(queryset.values_list("id", flat=True))
+            return []
+        from rest_framework.response import Response
+        client = APIClient(raise_request_exception=False)
+        with mock.patch.object(ClaimViewSet, "paginate_queryset", paginate), \
+                mock.patch.object(ClaimViewSet, "get_paginated_response", lambda view, data: Response([])):
+            response = client.get(BASE_URL + "Claim/", {"patient": str(patient)}, **_bearer(self.user))
+        self.assertEqual(status.HTTP_200_OK, response.status_code, response.content)
+        return set(listed)
+
+    def test_claim_list_patient_filter_within_scope(self):
+        """[NEW] ?patient= on the claim list returns the claims of that insuree only"""
+        from api_fhir_r4.views.fhir.claim import ClaimViewSet
+        claim1 = self._claim_in(self.t.hf1, self.ins1)
+        other = self._claim_in(self.t.hf1, self.ins2)
+        self.assertEqual({claim1.id}, self._listed_claim_ids(self.ins1.uuid))
+        self.assertIn(other.id, set(self._served(ClaimViewSet).values_list("id", flat=True)),
+                      "sanity: the D2 insuree's claim in D1 is visible in the plain list")
+
+    def test_claim_list_patient_out_of_scope_like_unknown(self):
+        """[NEW] claim.py: the patient is looked up within the user's scope (Insuree.get_queryset).
+        A D2 insuree treated in D1 has a claim the user sees, but filtering on that patient must
+        not confirm they exist: the same empty list as an unknown uuid, not a 500"""
+        self._claim_in(self.t.hf1, self.ins2)
+        self.assertEqual(set(), self._listed_claim_ids(self.ins2.uuid))
+        self.assertEqual(set(), self._listed_claim_ids("00000000-0000-0000-0000-000000000000"))
+
+    def test_claim_list_patient_not_a_uuid(self):
+        """[NEW] a malformed patient is a client error (400 OperationOutcome), not a 500"""
+        from rest_framework.test import APIClient
+        response = APIClient(raise_request_exception=False).get(
+            BASE_URL + "Claim/", {"patient": "not-a-uuid"}, **_bearer(self.user))
+        self.assertEqual(status.HTTP_400_BAD_REQUEST, response.status_code, response.content)
+        self.assertEqual("OperationOutcome", response.json()["resourceType"])
+        self.assertIn("patient", response.json()["issue"][0]["details"]["text"])
 
     def test_communication_hides_other_district_feedback(self):
         """[NEW] reference communication.py:42 uses Feedback.get_queryset; v1.7.0 serves all feedbacks"""

@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from django.db.models import Prefetch
 from rest_framework import mixins
@@ -41,8 +42,14 @@ class ClaimViewSet(BaseFHIRView, MultiIdentifierRetrieverMixin, mixins.ListModel
                     raise ValidationError({'refDate': 'Invalid date format, should be in "%Y-%m-%d" format'})
 
             if patient is not None:
-                for_patient = Insuree.get_queryset(None, self.request.user).get(uuid=patient)
-                queryset = queryset.filter(insuree=for_patient)
+                try:
+                    patient_uuid = uuid.UUID(str(patient))
+                except ValueError:
+                    raise ValidationError({'patient': 'Invalid patient, should be a uuid'})
+                # looked up within the user's scope: a patient out of it is no different
+                # from an unknown one, an empty bundle
+                for_patient = Insuree.get_queryset(None, self.request.user).filter(uuid=patient_uuid)
+                queryset = queryset.filter(insuree__in=for_patient)
 
         serializer = ClaimSerializer(self.paginate_queryset(queryset), many=True, context={'contained': contained})
         return self.get_paginated_response(serializer.data)

@@ -168,13 +168,9 @@ class FHIRApiInsuranceOrganizationPermissions(FHIRApiPermissions):
 
 class FHIRApiProgramOrganizationPermissions(FHIRApiPermissions):
     # CSU: the program catalogue is consumed by claim submitters, the claim read permission is reused.
-    # Programs are read-only: the write serializers answer 405. Note that in FHIRApiPermissions an empty
-    # permission list means "no permission required", not "forbidden".
-    permissions_get = ClaimConfig.gql_query_claims_perms
-    permissions_post = []
-    permissions_put = []
-    permissions_patch = []
-    permissions_delete = []
+    # Programs are read-only: the write verbs keep the base class DENY (an empty list would mean
+    # "no permission required", not "forbidden").
+    permissions_get = closed(ClaimConfig.gql_query_claims_perms)
 
 
 class FHIRApiInsureePermissions(FHIRApiPermissions):
